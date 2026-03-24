@@ -3,78 +3,86 @@ import pandas as pd
 import plotly.express as px
 from gerar_pdfs_rmfc import build_resident_pdf, build_synthesis_pdf
 
-# Configurações iniciais
-st.set_page_config(page_title="Painel RMFC UNICAMP 2026", layout="wide", page_icon="🩺")
+st.set_page_config(page_title="Gestão RMFC 2026", layout="wide", page_icon="🏥")
 
-# Função para carregar dados do Google Sheets
-@st.cache_data(ttl=600) # Atualiza a cada 10 minutos
+@st.cache_data(ttl=600)
 def load_data():
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQR-KEmCfdmmAHhC_Y2GQe1MjDb5y1w6Qbg1GQmHiPCswIIIUctw7erzDH1xFqwLoWCOd5cLu552JNM/pub?output=csv"
     df = pd.read_csv(url)
-    # Limpa nomes de colunas (remove quebras de linha e espaços extras)
+    # Limpeza rigorosa de nomes de colunas
     df.columns = [col.replace('\n', ' ').strip() for col in df.columns]
     return df
 
 def main():
-    st.sidebar.title("Menu de Navegação")
+    st.sidebar.title("Navegação")
     df = load_data()
 
     if df is not None:
-        menu = st.sidebar.radio("Ir para:", ["Dashboard Geral", "Perfil Individual", "Tabela de Dados"])
+        aba = st.sidebar.radio("Escolha a visão:", ["Painel Geral", "Ficha do Residente", "Dados Brutos"])
 
-        if menu == "Dashboard Geral":
-            st.title("📊 Painel Geral de Residentes - 2026")
+        if aba == "Painel Geral":
+            st.title("📊 Visão Geral da Turma 2026")
             
-            # Métricas
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total de Residentes", len(df))
-            m2.metric("UBSs Diferentes", df['UBS:'].nunique())
-            m3.metric("Equipes Atendidas", df['Equipe:'].nunique())
-
-            st.divider()
+            # Gráficos de competências
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Experiências em Atenção à Saúde")
+                all_skills = df['Atenção à saúde'].str.split(',').explode().str.strip()
+                st.plotly_chart(px.bar(all_skills.value_counts(), orientation='h'), use_container_width=True)
             
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Distribuição por UBS")
-                fig_ubs = px.pie(df, names='UBS:', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-                st.plotly_chart(fig_ubs, use_container_width=True)
-            
-            with c2:
-                st.subheader("Top Experiências Prévias")
-                # Analisa a coluna de Atenção à Saúde (múltipla escolha separada por vírgula)
-                if 'Atenção à saúde' in df.columns:
-                    skills = df['Atenção à saúde'].str.split(',').explode().str.strip()
-                    fig_skills = px.bar(skills.value_counts().head(8), orientation='h', color_discrete_sequence=['#4c78a8'])
-                    st.plotly_chart(fig_skills, use_container_width=True)
+            with col2:
+                st.subheader("Experiência na Rede")
+                rede_skills = df['Rede'].str.split(',').explode().str.strip()
+                st.plotly_chart(px.bar(rede_skills.value_counts(), orientation='h', color_discrete_sequence=['orange']), use_container_width=True)
 
-            if st.button("📥 Exportar PDF com Lista Geral"):
-                pdf_geral = build_synthesis_pdf(df)
-                st.download_button("Clique aqui para baixar", pdf_geral, "relatorio_geral_2026.pdf", "application/pdf")
+            if st.button("📥 Baixar PDF com Lista Geral"):
+                st.download_button("Clique para baixar", build_synthesis_pdf(df), "lista_residentes.pdf", "application/pdf")
 
-        elif menu == "Perfil Individual":
-            st.title("👤 Diagnóstico por Residente")
-            residente_nome = st.selectbox("Selecione o(a) Residente:", df['Nome:'].unique())
-            
-            row = df[df['Nome:'] == residente_nome].iloc[0]
+        elif aba == "Ficha do Residente":
+            st.title("👤 Detalhes do Residente")
+            nome = st.selectbox("Selecione o nome:", df['Nome:'].unique())
+            res = df[df['Nome:'] == nome].iloc[0]
 
-            col_inf1, col_inf2 = st.columns([1, 2])
-            with col_inf1:
-                st.success(f"**UBS:** {row['UBS:']}\n\n**Equipe:** {row['Equipe:']}")
-                st.write(f"**Formação:** {row['Instituição de Ensino em que se graduou:']} ({row['Ano de Graduação:']})")
-                
-                # Botão de exportação PDF
-                pdf_res = build_resident_pdf(row)
-                st.download_button(f"📥 Exportar PDF de {residente_nome}", pdf_res, f"perfil_{residente_nome}.pdf", "application/pdf")
+            col_btn1, col_btn2 = st.columns([3, 1])
+            with col_btn2:
+                # Botão PDF
+                pdf_res = build_resident_pdf(res)
+                st.download_button(f"📥 Exportar PDF de {nome}", pdf_res, f"diagnostico_{nome}.pdf", "application/pdf")
 
-            with col_inf2:
-                st.subheader("Relatos e Motivações")
-                st.markdown(f"**Por que escolheu MFC?**\n{row['Por que escolheu MFC?']}")
+            # Exibição organizada de TODOS os campos
+            with st.expander("📌 Identificação e Graduação", expanded=True):
+                c1, c2, c3 = st.columns(3)
+                c1.write(f"**UBS:** {res['UBS:']}")
+                c1.write(f"**Equipe:** {res['Equipe:']}")
+                c2.write(f"**Instituição:** {res['Instituição de Ensino em que se graduou:']}")
+                c2.write(f"**Ano:** {res['Ano de Graduação:']}")
+                c3.write(f"**Telefone:** {res['Telefone:']}")
+                c3.write(f"**Email:** {res['Email da residente:']}")
+
+            with st.expander("💡 Motivação e Experiência Prévia", expanded=True):
+                st.write(f"**Por que escolheu MFC?**\n{res['Por que escolheu MFC?']}")
                 st.divider()
-                st.markdown(f"**Núcleo MFC (Demandas):**\n{row.get('Núcleo MFC', 'Não informado')}")
+                st.write(f"**Experiência Profissional Prévia:**\n{res['Experiência profissional prévia:']}")
 
-        elif menu == "Tabela de Dados":
-            st.title("📑 Visualização dos Dados Brutos")
-            st.dataframe(df, use_container_width=True)
+            with st.expander("🛠️ Práticas de APS e Gestão"):
+                st.write(f"**Reunião de Equipe:** {res['Reunião de equipe']}")
+                st.write(f"**Acolhimento:** {res['Acolhimento']}")
+                st.write(f"**Gestão da Agenda:** {res['Gestão da agenda']}")
+                st.write(f"**Ações de Planejamento:** {res['Ações de planejamento (marque ações)']}")
+                st.write(f"**E-multi/Intersetorial:** {res['NASF-E-multi-Intersetorial']}")
+
+            with st.expander("🩺 Clínica e Rede"):
+                st.write(f"**Atenção à Saúde:** {res['Atenção à saúde']}")
+                st.write(f"**Rede:** {res['Rede']}")
+                st.info(f"**Relatos da Conversa:**\n{res['Relatos/fatos específicos que gostaria de relatar a partir da conversa']}")
+
+            with st.expander("📚 Demandas de Aprendizado"):
+                st.write(f"**Núcleo MFC:** {res['Núcleo MFC']}")
+                st.write(f"**Saúde Coletiva:** {res['Campo Saúde Coletiva (Gestão do Cuidado, Processo de Trabalho, Epidemio, etc.)']}")
+                st.warning(f"**Diagnóstico Inicial / Observações:**\n{res['Se quiser adicionar informações relevantes sobre a conversa e o diagnóstico inicial, para termos em comum, pode utilizar esse espaço']}")
+
+        elif aba == "Dados Brutos":
+            st.dataframe(df)
 
 if __name__ == "__main__":
     main()
