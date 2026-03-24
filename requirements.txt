@@ -1,0 +1,8 @@
+
+streamlit>=1.32
+plotly>=5.20
+pandas>=2.0
+reportlab>=4.1
+openpyxl>=3.1
+requests>=2.31
+gspread>=6.0       # opcional: para autenticação via Service Account
